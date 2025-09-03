@@ -1,0 +1,127 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Carbon\Carbon;
+{{base_model_trait_uses}}
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+class BaseModel extends Model
+{
+    {{base_model_trait_uses_in_class}}
+    protected $guarded = [];
+    protected $perPage = 20;
+    public function getCreatedAtAttribute($date)
+    {
+        return Carbon::parse($date)->setTimezone('Europe/London')->format('Y-m-d H:i:s');
+    }
+
+    public function getUpdatedAtAttribute($date)
+    {
+        return Carbon::parse($date)->setTimezone('Europe/London')->format('Y-m-d H:i:s');
+    }
+
+    public static function performAddUpdateDeleteAction(
+        $model,
+        $relation_key,
+        $foreign_id_key,
+        $main_id,
+        $new_ids = []
+    ) {
+        $existing_relations = $model::where($relation_key, $main_id)->withTrashed()->get();
+
+        $deleted_ids = [];
+
+        foreach ($existing_relations as $relation) {
+            $foreign_id = $relation->$foreign_id_key;
+
+            if (in_array($foreign_id, $new_ids)) {
+                if ($relation->deleted_at !== null) {
+                    $relation->restore();
+                }
+                $key = array_search($foreign_id, $new_ids);
+                unset($new_ids[$key]);
+            } else {
+                $deleted_ids[] = $foreign_id;
+                $relation->delete();
+            }
+        }
+
+        $flag = false;
+        if (!empty($new_ids)) {
+            foreach ($new_ids as $newId) {
+                $relation = $model::where([$relation_key => $main_id, $foreign_id_key => $newId])->first();
+
+                if (!$relation) {
+                    $relation = new $model([$relation_key => $main_id, $foreign_id_key => $newId]);
+                    $flag = $relation->save() || $flag;
+                }
+            }
+        }
+
+        if (!empty($deleted_ids)) {
+            $model::whereIn($foreign_id_key, $deleted_ids)->where($relation_key, $main_id)->delete();
+        }
+
+        return $flag;
+    }
+
+    public function scopeFilterBySyncDate($query, string $sync_date)
+    {
+        return $query->withTrashed()->where(function ($sub_query) use ($sync_date) {
+            $sub_query->where('updated_at', '>=', $sync_date)
+                ->orWhere('deleted_at', '>=', $sync_date);
+        });
+    }
+
+    public function pivotRecords($pivot_records)
+    {
+        $user_id = $user_id = $this->getCurrentUserId();
+
+        $pivot_records->each(function ($pivot_record) use ($user_id) {
+            $pivot_record->update([
+                'created_by' => $pivot_record->created_by ?: $user_id,
+                'updated_by' => $user_id,
+            ]);
+        });
+    }
+
+    public function createdByUserRelation(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by')->select('id', 'name');
+    }
+
+    public function updatedByUserRelation(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by')->select('id', 'name');
+    }
+
+    public function getCurrentUserId()
+    {
+        $conf = config('laravel-api-modules.user_id_source');
+        $type = $conf['type'] ?? 'request';
+
+        if ($type === 'auth') {
+            return auth()->id();
+        }
+        if ($type === 'request') {
+            // Support dot notation for nested keys
+            $key = $conf['key'] ?? 'user_details.id';
+            $value = request();
+            foreach (explode('.', $key) as $segment) {
+                $value = is_array($value) ? ($value[$segment] ?? null) : (is_object($value) ? ($value->$segment ?? null) : null);
+                if (is_null($value)) break;
+            }
+            return $value ?? null;
+        }
+        if ($type === 'custom' && isset($conf['resolver']) && is_callable($conf['resolver'])) {
+            return call_user_func($conf['resolver']);
+        }
+        return null;
+    }
+}

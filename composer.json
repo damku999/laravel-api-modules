@@ -1,0 +1,83 @@
+{
+  "name": "webmonks/laravel-api-modules",
+  "description": "SOLID principle, modular API code generator for Laravel",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "WebMonks Technologies",
+      "email": "darshan@webmonks.in",
+      "role": "Developer",
+      "homepage": "https://webmonks.in"
+    }
+  ],
+  "require": {
+    "php": ">=7.4",
+    "illuminate/support": "^8.0|^9.0|^10.0|^11.0",
+    "barryvdh/laravel-dompdf": "^2.0 || ^3.0",
+    "twilio/sdk": "^6.0|^7.0|^8.0"
+  },
+  "require-dev": {
+    "laravel/framework": "^8.0|^9.0|^10.0|^11.0",
+    "orchestra/testbench": "^6.0|^7.0|^8.0|^9.0",
+    "pestphp/pest": "^1.23|^2.0|^3.0",
+    "mockery/mockery": "^1.4",
+    "pestphp/pest-plugin-laravel": "^1.4|^2.0|^3.0",
+    "symfony/var-dumper": "^5.0|^6.0|^7.0",
+    "friendsofphp/php-cs-fixer": "^3.0",
+    "larastan/larastan": "^1.0|^2.0|^3.0",
+    "vimeo/psalm": "^5.0|^6.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Webmonks\\LaravelApiModules\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Webmonks\\LaravelApiModules\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "vendor/bin/pest",
+    "test-coverage": "vendor/bin/pest --coverage --coverage-html=coverage-report --coverage-text",
+    "test-coverage-clover": "vendor/bin/pest --coverage --coverage-clover=coverage.xml",
+    "test-watch": "vendor/bin/pest --watch",
+    "analyse": "vendor/bin/phpstan analyse --memory-limit=2G",
+    "psalm": "vendor/bin/psalm",
+    "format": "vendor/bin/php-cs-fixer fix --allow-risky=yes",
+    "format-dry": "vendor/bin/php-cs-fixer fix --dry-run --diff --verbose",
+    "quality": [
+      "@format-dry",
+      "@analyse", 
+      "@psalm",
+      "@test-coverage"
+    ]
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Webmonks\\LaravelApiModules\\LaravelApiModulesServiceProvider",
+        "Webmonks\\LaravelApiModules\\Providers\\HelperServiceProvider"
+      ]
+    }
+  },
+  "keywords": [
+    "laravel",
+    "api",
+    "modules",
+    "module",
+    "restful",
+    "code generator",
+    "modular",
+    "SOLID",
+    "webmonks"
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}

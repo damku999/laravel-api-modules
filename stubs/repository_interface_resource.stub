@@ -1,0 +1,49 @@
+<?php
+
+namespace App\Core\Interfaces;
+
+use App\Models\BaseModel;
+
+interface {{model}}RepositoryInterface
+{
+    /**
+     * List {{modelPlural}} based on given criteria.
+     *
+     * @param array $data
+     * @return array
+     */
+    public function list(array $data): array;
+
+    /**
+     * View a single {{model}} by ID.
+     *
+     * @param mixed $id
+     * @return BaseModel|null
+     */
+    public function view($id): ?BaseModel;
+
+    /**
+     * Create a new {{model}} with given data.
+     *
+     * @param array $data
+     * @return BaseModel|null
+     */
+    public function create(array $data): ?BaseModel;
+
+    /**
+     * Update a {{model}} by ID with given data.
+     *
+     * @param mixed $id
+     * @param array $data
+     * @return BaseModel|null
+     */
+    public function update($id, array $data): ?BaseModel;
+
+    /**
+     * Delete a {{model}} by ID.
+     *
+     * @param mixed $id
+     * @return array
+     */
+    public function delete($id): array;
+}

@@ -1,0 +1,35 @@
+<?php
+
+namespace DummyNamespace\Repositories;
+
+use App\Models\Activity;
+use App\Models\BaseModel;
+use DummyNamespace\Models\{{model}};
+use App\Core\Interfaces\{{model}}RepositoryInterface;
+use Illuminate\Pagination\Paginator;
+
+class {{model}}Repository implements {{model}}RepositoryInterface
+{
+    public function list(array $filters): array
+    {
+        $orderBy = 'DummyTable.' . ($filters['order_by'] ?? 'updated_at');
+        $sortingOrder = $filters['sorting_order'] ?? 'DESC';
+        $search = $filters['search'] ?? '';
+        $page = $filters['page'] ?? config('constants_logical.DEFAULT_PAGE');
+        $showRecords = $filters['show_records'] ?? config('constants_logical.RECORD_LIMIT');
+
+        $query = {{model}}::query();
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', '%' . $search . '%');
+            });
+        }
+
+        Paginator::currentPageResolver(function () use ($page) {
+            return $page;
+        });
+        $result = $query->orderBy($orderBy, $sortingOrder)->paginate($showRecords)->toArray();
+        return $result;
+    }
+}

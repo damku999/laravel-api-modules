@@ -1,0 +1,76 @@
+<?php
+
+namespace DummyNamespace\Repositories;
+
+use App\Models\Activity;
+use App\Models\BaseModel;
+use DummyNamespace\Models\{{model}};
+use App\Core\Interfaces\{{model}}RepositoryInterface;
+use Illuminate\Pagination\Paginator;
+
+class {{model}}Repository implements {{model}}RepositoryInterface
+{
+    public function create(array $data): BaseModel
+    {
+        $item = {{model}}::create($data);
+
+        if ($item) {
+            Activity::addActivity('CREATED', 'DummyClass', $item->id, $data['name'] . " is added");
+        }
+
+        return $item;
+    }
+
+    public function update($id, array $data): BaseModel
+    {
+        $item = {{model}}::find($id);
+        $item->name = $data['name'];
+        // Add more fields as needed
+
+        $activity_log = method_exists($item, 'generateActivityLogWithRelations')
+            ? $item->generateActivityLogWithRelations($item)
+            : null;
+
+        if ($item->save() && $activity_log && $activity_log != '[]') {
+            Activity::addActivity('UPDATED', 'DummyClass', $item->id, $data['name'] . " is updated", $activity_log);
+        }
+
+        return $item;
+    }
+
+    public function delete($id): array
+    {
+        $item = {{model}}::find($id);
+        $item->delete();
+        Activity::addActivity('DELETED', 'DummyClass', $item->id, $item->name . " is deleted");
+        return ['action_status' => 'success'];
+    }
+
+    public function view($id): ?BaseModel
+    {
+        return {{model}}::find($id);
+    }
+
+    public function list(array $filters): array
+    {
+        $orderBy = 'DummyTable.' . ($filters['order_by'] ?? 'updated_at');
+        $sortingOrder = $filters['sorting_order'] ?? 'DESC';
+        $search = $filters['search'] ?? '';
+        $page = $filters['page'] ?? config('constants_logical.DEFAULT_PAGE');
+        $showRecords = $filters['show_records'] ?? config('constants_logical.RECORD_LIMIT');
+
+        $query = {{model}}::query();
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', '%' . $search . '%');
+            });
+        }
+
+        Paginator::currentPageResolver(function () use ($page) {
+            return $page;
+        });
+        $result = $query->orderBy($orderBy, $sortingOrder)->paginate($showRecords)->toArray();
+        return $result;
+    }
+}

@@ -1,0 +1,206 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Core\Traits;
+
+use Carbon\Carbon;
+use Exception;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Trait ActivityLogHelper
+ *
+ * Provides utility methods for generating and managing activity logs for Eloquent models.
+ */
+trait ActivityLogHelper
+{
+    // public $activity_model = [
+    //     'doc_type_id' => [
+    //         'model_name' => 'DocumentType', // Name of that model using this will create model object.
+    //         'model_field' => 'document_type_name', // Name of the field which id is stored as key of this array
+    //         'activity_name' => 'Document Type', // if you want to display the activity label different from the above key
+    //         'is_remove' => true, // true if you want to not display this column in activity log. Default value is false.
+    //         'is_comma_separated_value' => true, // true if value are stored as comma separated in database. Default value is false.
+    //         'is_date' => true, // true if it is date and you want to change format in activity log. Default value is false.
+    //         'is_datetime' => true, // true if it is date and time and you want to change format in activity log. Default value is false.
+    //         'date_format' => 'd-m-Y', // format of the date which you want to display on activity logs. Default date format is dd-mm-yyy and date time format is dd-mm-yyyy hh:ii:ss
+    //     ],
+    // ];
+
+    /**
+     * Get activity logs detail information with relationship.
+     *
+     * This function retrieves the dirty attributes of an object and constructs an activity log
+     * JSON string. It checks if the object has an `activity_model` property and if so, it
+     * retrieves the corresponding reference table array. It then iterates over the dirty
+     * attributes and checks if they have a corresponding entry in the reference table array.
+     * If they do, it retrieves the model name and model field from the reference table array.
+     * If the attribute is a comma-separated value, it retrieves the old and new values using
+     * old and new values using the `formatDateTime` method. It then constructs the activity log
+     * JSON string by adding the field data, old values, and new values to the activity log array.
+     *
+     * @param  Model  $model The Eloquent model with changes.
+     * @return string The activity log JSON string of changed fields.
+     */
+    public function generateActivityLogWithRelations(Model $model): string
+    {
+        $dirtyAttributes = $model->getDirty();
+        $activityLog = [];
+
+        if (!empty($dirtyAttributes)) {
+            $referenceTable = $model->activity_model ?? [];
+
+            foreach ($dirtyAttributes as $attribute => $newValue) {
+                $oldValue = $model->getOriginal($attribute);
+
+                if ($this->shouldSkipLogging($referenceTable, $attribute)) {
+                    continue;
+                }
+
+                $oldValue = $this->resolveValue($referenceTable, $attribute, $oldValue, true);
+                $newValue = $this->resolveValue($referenceTable, $attribute, $newValue, false);
+
+                if ($oldValue !== $newValue) {
+                    $fieldName = $this->getActivityName($referenceTable, $attribute);
+                    $activityLog['field_data'][] = $fieldName;
+                    $activityLog['old_' . $fieldName] = $oldValue;
+                    $activityLog['new_' . $fieldName] = $newValue;
+                }
+            }
+        }
+
+        return json_encode($activityLog);
+    }
+
+    /**
+     * Determine if an attribute should be skipped from logging.
+     *
+     * @param  array  $referenceTable Reference table array.
+     * @param  string $attribute      The attribute name.
+     * @return bool   True if logging should be skipped, false otherwise.
+     */
+    private function shouldSkipLogging(array $referenceTable, string $attribute): bool
+    {
+        return !empty($referenceTable[$attribute]['is_remove']);
+    }
+
+    /**
+     * Resolve the value of an attribute based on its configuration.
+     *
+     * @param  array  $referenceTable Reference table array.
+     * @param  string $attribute      The attribute name.
+     * @param  mixed  $value          The original or new value of the attribute.
+     * @param  bool   $isOldValue     Whether the value is an old value.
+     * @return mixed  The resolved value.
+     */
+    private function resolveValue(array $referenceTable, string $attribute, $value, bool $isOldValue)
+    {
+        if (isset($referenceTable[$attribute])) {
+            $config = $referenceTable[$attribute];
+
+            if (!empty($config['is_comma_separated_value'])) {
+                return $this->resolveCommaSeparatedValue($config, $value);
+            }
+
+            if (!empty($config['is_date'])) {
+                return $this->formatDateTime($value, $config['date_format'] ?? 'd/m/Y');
+            }
+
+            if (!empty($config['is_datetime'])) {
+                return $this->formatDateTime($value, $config['date_format'] ?? 'd/m/Y H:i:s');
+            }
+
+            if (!empty($config['callback_function']) && method_exists($this, $config['callback_function'])) {
+                return $this->{$config['callback_function']}($value, $isOldValue);
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * Resolve a comma-separated value into a readable format.
+     *
+     * @param  array  $config Configuration for the attribute.
+     * @param  string $value  The comma-separated value.
+     * @return string The resolved value.
+     */
+    private function resolveCommaSeparatedValue(array $config, string $value): string
+    {
+        $modelClass = '\\App\\Models\\' . $config['model_name'];
+        $modelField = $config['model_field'];
+
+        return $this->fetchModelRecords($modelClass, $modelField, $value);
+    }
+
+    /**
+     * Fetch records from a model by IDs.
+     *
+     * @param  string $modelClass The model class name.
+     * @param  string $field      The field to retrieve.
+     * @param  string $ids        Comma-separated IDs.
+     * @return string The retrieved records as a comma-separated string.
+     */
+    public function fetchModelRecords(string $modelClass, string $field, string $ids): string
+    {
+        try {
+            $model = new $modelClass();
+
+            return $model::whereIn('id', explode(',', $ids))->pluck($field)->implode(', ');
+        } catch (Exception $e) {
+            Log::error('Error fetching model records: ' . $e->getMessage());
+
+            return '';
+        }
+    }
+
+    /**
+     * Format a datetime string into a specified format.
+     *
+     * @param  string|null $datetime The datetime string to format.
+     * @param  string      $format   The desired format.
+     * @return string      The formatted datetime string.
+     */
+    public function formatDateTime(?string $datetime, string $format): string
+    {
+        if (empty($datetime) || $datetime === 'Invalid date') {
+            return '';
+        }
+
+        return Carbon::parse($datetime)->format($format);
+    }
+
+    /**
+     * Retrieve the activity name for an attribute.
+     *
+     * @param  array  $referenceTable Reference table array.
+     * @param  string $attribute      The attribute name.
+     * @return string The activity name or the attribute itself if not defined.
+     */
+    public function getActivityName(array $referenceTable, string $attribute): string
+    {
+        return $referenceTable[$attribute]['activity_name'] ?? $attribute;
+    }
+
+    /**
+     * Merge two activity log data arrays into one.
+     *
+     * @param  array|string $activityLog       The first activity log data.
+     * @param  array|string $updatedFieldsData The second activity log data.
+     * @return string       JSON-encoded merged activity log data.
+     */
+    public function mergeActivityData($activityLog, $updatedFieldsData): string
+    {
+        $activityLog = is_array($activityLog) ? $activityLog : json_decode($activityLog, true) ?? [];
+        $updatedFieldsData = is_array($updatedFieldsData) ? $updatedFieldsData : json_decode($updatedFieldsData, true) ?? [];
+
+        $mergedFieldData = array_unique(array_merge(
+            $updatedFieldsData['field_data'] ?? [],
+            $activityLog['field_data'] ?? []
+        ));
+
+        return json_encode(array_merge($updatedFieldsData, $activityLog, ['field_data' => $mergedFieldData]));
+    }
+}

@@ -1,0 +1,25 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DummyNamespace\Services;
+
+use App\Core\Services\BaseService;
+use DummyNamespace\Models\{{model}};
+use App\Core\Interfaces\{{model}}RepositoryInterface;
+
+class {{model}}Service extends BaseService
+{
+    protected ${{modelVariable}}Repo;
+
+    public function __construct({{model}}RepositoryInterface ${{modelVariable}}Repo)
+    {
+        $this->{{modelVariable}}Repo = ${{modelVariable}}Repo;
+    }
+
+    public function list{{modelPlural}}(array $data)
+    {
+        // You may want to extend this for additional data as needed
+        return $this->{{modelVariable}}Repo->list($data);
+    }
+}

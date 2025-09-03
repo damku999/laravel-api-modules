@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<psalm
+    errorLevel="6"
+    resolveFromConfigFile="true"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+    findUnusedBaselineEntry="false"
+    findUnusedCode="false"
+    allowPhpStormGenerics="true"
+    allowStringToStandInForClass="true"
+    memoizeMethodCallResults="true"
+>
+    <projectFiles>
+        <directory name="src" />
+        <ignoreFiles>
+            <directory name="vendor" />
+            <directory name="tests" />
+            <directory name="stubs" />
+        </ignoreFiles>
+    </projectFiles>
+
+    <issueHandlers>
+        <MissingOverrideAttribute errorLevel="suppress" />
+        <!-- Suppress Laravel compatibility issues -->
+        <UndefinedClass errorLevel="suppress" />
+        <UndefinedMethod errorLevel="suppress" />
+        <UndefinedConstant errorLevel="suppress" />
+        
+        <!-- Allow common Laravel patterns -->
+        <LessSpecificReturnType errorLevel="suppress" />
+        <MoreSpecificReturnType errorLevel="suppress" />
+        <PropertyNotSetInConstructor errorLevel="suppress" />
+        <MissingConstructor errorLevel="suppress" />
+        <PossiblyNullReference errorLevel="suppress" />
+        <PossiblyUndefinedMethod errorLevel="suppress" />
+        
+        <!-- Focus on security issues only -->
+        <TaintedInput errorLevel="error" />
+        <TaintedShell errorLevel="error" />
+        <TaintedSql errorLevel="error" />
+        <TaintedFile errorLevel="error" />
+        <TaintedHeader errorLevel="error" />
+        <TaintedHtml errorLevel="error" />
+    </issueHandlers>
+
+    <!-- Removed Laravel plugin due to compatibility issues with newer Laravel versions -->
+    <!-- Focus on security analysis without framework-specific plugins -->
+</psalm>

@@ -1,0 +1,156 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Core\Traits;
+
+use Exception;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Twilio\Rest\Client;
+
+/**
+ * Trait SmsSender
+ *
+ * Provides utility methods to send SMS messages using Twilio.
+ */
+trait SmsSender
+{
+    /**
+     * Send an SMS message to a receiver.
+     *
+     * @param  string $receiverNumber The receiver's mobile number.
+     * @param  string $message        The message to be sent.
+     * @return array  Response details including status, errors, or message metadata.
+     */
+    public function sendSms(string $receiverNumber, string $message): array
+    {
+        $receiverNumber = $this->formatUKMobileNumber($receiverNumber);
+
+        if (empty($receiverNumber)) {
+            return $this->smsErrorResponse('The receiver number is not a valid UK mobile number.');
+        }
+
+        $accountSid = env('TWILIO_SID');
+        $authToken = env('TWILIO_AUTH_TOKEN');
+        $twilioNumber = env('TWILIO_PHONE_NUMBER');
+
+        try {
+            if (config('constants.SEND_SMS')) {
+                $client = new Client($accountSid, $authToken);
+
+                $sentMessage = $client->messages->create($receiverNumber, [
+                    'from' => $twilioNumber,
+                    'body' => $message,
+                ]);
+
+                $this->logSmsDetails($receiverNumber, $message, $sentMessage);
+
+                $smsId = $sentMessage->sid;
+                $messageStatus = $client->messages($smsId)->fetch();
+
+                return $this->smsSuccessResponse(
+                    $smsId,
+                    $messageStatus->status,
+                    $messageStatus->dateCreated->format('Y-m-d H:i:s'),
+                    $messageStatus->dateUpdated->format('Y-m-d H:i:s'),
+                    $messageStatus->toArray()
+                );
+            }
+
+            return ['status' => 'success'];
+        } catch (\Twilio\Exceptions\RestException $e) {
+            Log::error('Twilio RestException: '.$e->getMessage());
+
+            return $this->smsErrorResponse($e->getMessage());
+        } catch (Exception $e) {
+            Log::error('General Exception: '.$e->getMessage());
+
+            return $this->smsErrorResponse('SMS could not be sent. Please try again.');
+        }
+    }
+
+    /**
+     * Format a UK mobile number to a valid format.
+     *
+     * @param  string $number The mobile number to format.
+     * @return string The formatted mobile number or an empty string if invalid.
+     */
+    public function formatUKMobileNumber(string $number): string
+    {
+        // Remove all non-numeric characters
+        $number = preg_replace('/[^0-9]/', '', $number);
+
+        // Validate and format UK numbers
+        if (preg_match('/^0(7\d{9})$/', $number, $matches)) {
+            // Replace the leading 0 with +44
+            return '+44'.$matches[1];
+        }
+
+        // Check if the number already starts with +44 and is valid
+        if (preg_match('/^\+447\d{9}$/', $number)) {
+            return $number;
+        }
+
+        // Return an empty string if the number is invalid
+        return '';
+    }
+
+    /**
+     * Log SMS details to a file for debugging and record-keeping.
+     *
+     * @param string                                         $receiverNumber The receiver's mobile number.
+     * @param string                                         $message        The message sent.
+     * @param \Twilio\Rest\Api\V2010\Account\MessageInstance $sentMessage    The Twilio message instance.
+     */
+    private function logSmsDetails(string $receiverNumber, string $message, $sentMessage): void
+    {
+        $logPath = 'smslog/'.date('Y').DIRECTORY_SEPARATOR.date('m').DIRECTORY_SEPARATOR;
+        $logFile = date('Ymd').'.txt';
+
+        $logData = [
+            'Receiver Number' => $receiverNumber,
+            'Message' => $message,
+            'Sent Message' => $sentMessage,
+        ];
+
+        Storage::makeDirectory($logPath);
+        Storage::append($logPath.$logFile, json_encode($logData, JSON_PRETTY_PRINT));
+    }
+
+    /**
+     * Generate a success response for a sent SMS.
+     *
+     * @param  string $smsId       The ID of the sent SMS.
+     * @param  string $smsStatus   The status of the SMS.
+     * @param  string $dateCreated The creation date of the SMS.
+     * @param  string $dateUpdated The updated date of the SMS.
+     * @param  array  $details     Additional details about the SMS.
+     * @return array  The success response array.
+     */
+    private function smsSuccessResponse(string $smsId, string $smsStatus, string $dateCreated, string $dateUpdated, array $details): array
+    {
+        return [
+            'status' => 'success',
+            'sms_id' => $smsId,
+            'sms_status' => $smsStatus,
+            'date_created' => $dateCreated,
+            'date_updated' => $dateUpdated,
+            'details' => json_encode($details),
+        ];
+    }
+
+    /**
+     * Generate an error response for a failed SMS.
+     *
+     * @param  string $errorMessage The error message to return.
+     * @return array  The error response array.
+     */
+    private function smsErrorResponse(string $errorMessage): array
+    {
+        return [
+            'status' => 'error',
+            'error_message' => $errorMessage,
+        ];
+    }
+}

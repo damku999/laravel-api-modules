@@ -1,0 +1,73 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DummyNamespace\Services;
+
+use App\Core\Services\BaseService;
+use DummyNamespace\Models\{{model}};
+use App\Core\Interfaces\{{model}}RepositoryInterface;
+
+class {{model}}Service extends BaseService
+{
+    protected ${{modelVariable}}Repo;
+
+    public function __construct({{model}}RepositoryInterface ${{modelVariable}}Repo)
+    {
+        $this->{{modelVariable}}Repo = ${{modelVariable}}Repo;
+    }
+
+    public function list{{modelPlural}}(array $data)
+    {
+        // You may want to extend this for additional data as needed
+        return $this->{{modelVariable}}Repo->list($data);
+    }
+
+    public function view{{model}}(int $id)
+    {
+        return $this->{{modelVariable}}Repo->view($id);
+    }
+
+    public function create{{model}}(array $data)
+    {
+        if ($this->isDuplicate($data)) {
+            return [
+                'action_status' => 'fail',
+                'error' => buildSentenceCaseMessage('duplicate_record', $data['name'])
+            ];
+        }
+        return $this->{{modelVariable}}Repo->create($data);
+    }
+
+    public function update{{model}}(array $data)
+    {
+        if ($this->isDuplicate($data, $data['id'])) {
+            return [
+                'action_status' => 'fail',
+                'error' => buildSentenceCaseMessage('duplicate_record', $data['name'])
+            ];
+        }
+        return $this->{{modelVariable}}Repo->update($data['id'], $data);
+    }
+
+    public function delete{{model}}(int $id)
+    {
+        return $this->{{modelVariable}}Repo->delete($id);
+    }
+
+    /**
+     * Check for duplicate {{model}} name.
+     */
+    private function isDuplicate(array $data, $excludeId = null): bool
+    {
+        $query = {{model}}::query();
+
+        $query->where('name', $data['name']);
+
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        return $query->exists();
+    }
+}

@@ -1,0 +1,24 @@
+<?php
+
+namespace App\Core\Providers;
+
+use Illuminate\Support\ServiceProvider;
+
+class RepositoryServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        $modulesPath = app_path('Modules');
+
+        foreach (scandir($modulesPath) as $module) {
+            if ($module === '.' || $module === '..') continue;
+
+            $interface = "App\\Core\\Interfaces\\{$module}RepositoryInterface";
+            $repository = "App\\Modules\\{$module}\\Repositories\\{$module}Repository";
+
+            if (interface_exists($interface) && class_exists($repository)) {
+                $this->app->bind($interface, $repository);
+            }
+        }
+    }
+}

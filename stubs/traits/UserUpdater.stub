@@ -1,0 +1,43 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Core\Traits;
+
+/**
+ * Trait UserUpdater
+ *
+ * Automatically updates `created_by`, `updated_by`, and `deleted_by` fields
+ * in Eloquent models based on the authenticated user's ID.
+ */
+trait UserUpdater
+{
+    /**
+     * Register the trait's model event listeners.
+     */
+    protected static function boot()
+    {
+        static::creating(function ($model) {
+            $authUserId = method_exists($model, 'getCurrentUserId')
+                ? $model->getCurrentUserId()
+                : null; // fallback is handled in getCurrentUserId
+            $model->created_by = $authUserId;
+            $model->updated_by = $authUserId;
+        });
+
+        static::updating(function ($model) {
+            $authUserId = method_exists($model, 'getCurrentUserId')
+                ? $model->getCurrentUserId()
+                : null;
+            $model->updated_by = $authUserId;
+        });
+
+        static::deleting(function ($model) {
+            $authUserId = method_exists($model, 'getCurrentUserId')
+                ? $model->getCurrentUserId()
+                : null;
+            $model->deleted_by = $authUserId;
+            $model->save();
+        });
+    }
+}

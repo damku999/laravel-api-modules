@@ -1,0 +1,16 @@
+<?php
+
+namespace App\Core\Interfaces;
+
+use App\Models\BaseModel;
+
+interface {{model}}RepositoryInterface
+{
+    /**
+     * List {{modelPlural}} based on given criteria.
+     *
+     * @param array $data
+     * @return array
+     */
+    public function list(array $data): array;
+}

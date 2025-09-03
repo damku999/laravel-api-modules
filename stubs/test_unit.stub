@@ -1,0 +1,14 @@
+<?php
+
+namespace Tests\Unit\Modules\DummyClass;
+
+use PHPUnit\Framework\TestCase;
+
+class DummyClassUnitTest extends TestCase
+{
+    /** @test */
+    public function it_runs_basic_unit_test()
+    {
+        $this->assertTrue(true);
+    }
+}

@@ -1,0 +1,16 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Core\Http\Middleware\Authorization;
+use DummyNamespace\Controllers\{{model}}Controller;
+
+// Group all routes that require the Authorization middleware
+Route::middleware(Authorization::class)->prefix('api')->group(function () {
+    Route::prefix('{{modelSnake}}')->controller({{model}}Controller::class)->group(function () {
+        Route::post('/get', 'list')->name('{{modelSnake}}.list');
+        Route::post('/get/{id}', 'view')->name('{{modelSnake}}.view');
+        Route::post('/create', 'create')->name('{{modelSnake}}.create');
+        Route::post('/update', 'update')->name('{{modelSnake}}.update');
+        Route::post('/delete', 'delete')->name('{{modelSnake}}.delete');
+    });
+});

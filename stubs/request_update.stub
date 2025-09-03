@@ -1,0 +1,24 @@
+<?php
+
+namespace DummyNamespace\Request;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class UpdateDummyClassRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'id' => [
+                'required',
+                Rule::exists('DummyTable', 'id')->whereNull('deleted_at'),
+            ],
+        ];
+    }
+
+    public function authorize(): bool
+    {
+        return true;
+    }
+}

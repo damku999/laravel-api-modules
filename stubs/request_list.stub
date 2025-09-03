@@ -1,0 +1,19 @@
+<?php
+
+namespace DummyNamespace\Request;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class ListDummyClassRequest extends FormRequest
+{
+    public function rules()
+    {
+        return [
+            'order_by' => 'nullable|string',
+            'sorting_order' => 'nullable|in:ASC,DESC',
+            'search' => 'nullable|string',
+            'page' => 'nullable|integer|min:1',
+            'show_records' => 'nullable|integer|min:1|max:500',
+        ];
+    }
+}

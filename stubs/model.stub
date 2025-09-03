@@ -1,0 +1,38 @@
+<?php
+
+namespace DummyNamespace\Models;
+
+use {{model_use_base}};
+use App\Core\Traits\HasCommonCasts;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+/**
+ * Class DummyClass
+ *
+ * @property int         $id
+ * @property string      $name
+ * @property int|null    $created_by
+ * @property int|null    $updated_by
+ * @property int|null    $deleted_by
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @property string|null $deleted_at
+ *
+ * @package App\Models
+ */
+class DummyClass extends {{model_extends_base}}
+{
+    use HasCommonCasts;
+    use HasFactory;
+    protected $table = '{{DummyTable}}';
+
+    protected $casts = [
+        'name' => 'string',
+    ];
+    protected $fillable = [
+        'name',
+        'created_by',
+        'updated_by',
+        'deleted_by',
+    ];
+}

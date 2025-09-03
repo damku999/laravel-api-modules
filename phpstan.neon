@@ -1,0 +1,19 @@
+parameters:
+    level: 8
+    paths:
+        - src
+    excludePaths:
+        - stubs
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # Laravel specific ignores
+        - '#Call to an undefined method Illuminate\\.*#'
+        - '#Access to an undefined property Illuminate\\.*#'
+        - '#Variable \$this might not be defined#'
+        # Type checking warnings that are overly strict
+        - '#Strict comparison using === between .* and null will always evaluate to false#'
+        - '#Else branch is unreachable because ternary operator condition is always true#'
+    reportUnmatchedIgnoredErrors: false
+    
+includes:
+    - vendor/larastan/larastan/extension.neon

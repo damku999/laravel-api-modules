@@ -1,0 +1,86 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DummyNamespace\Controllers;
+
+use Illuminate\Http\Response;
+use App\Http\Controllers\Controller;
+use DummyNamespace\Services\{{model}}Service;
+use DummyNamespace\Request\List{{model}}Request;
+use DummyNamespace\Request\View{{model}}Request;
+use DummyNamespace\Request\Create{{model}}Request;
+use DummyNamespace\Request\Delete{{model}}Request;
+use DummyNamespace\Request\Update{{model}}Request;
+
+class {{model}}Controller extends Controller
+{
+    protected ${{modelVariable}}Service;
+
+    public function __construct({{model}}Service ${{modelVariable}}Service)
+    {
+        $this->{{modelVariable}}Service = ${{modelVariable}}Service;
+    }
+
+    public function list(List{{model}}Request $request)
+    {
+        $response = $this->{{modelVariable}}Service->list{{modelPlural}}($request->validated());
+        return $this->successResponse($response, buildSentenceCaseMessage('action_success', 'Get {{model}}'), Response::HTTP_OK);
+    }
+
+    public function view(View{{model}}Request $request)
+    {
+        ${{modelVariable}} = $this->{{modelVariable}}Service->view{{model}}($request->validated()['id']);
+        return ${{modelVariable}}
+            ? $this->successResponse(${{modelVariable}}, buildSentenceCaseMessage('action_success', 'Show {{model}}'), Response::HTTP_OK)
+            : $this->errorResponse(Response::HTTP_UNPROCESSABLE_ENTITY, buildSentenceCaseMessage('no_record', '{{model}}'));
+    }
+
+    public function create(Create{{model}}Request $request)
+    {
+        $result = $this->{{modelVariable}}Service->create{{model}}($request->validated());
+        if (isset($result['action_status']) && $result['action_status'] === 'fail') {
+            return $this->errorResponse(
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+                $result['error'] ?? buildSentenceCaseMessage('add_fail', '{{model}}')
+            );
+        }
+        return $this->successResponse(
+            $result,
+            buildSentenceCaseMessage('add_success', '{{model}}'),
+            Response::HTTP_CREATED
+        );
+    }
+
+    public function update(Update{{model}}Request $request)
+    {
+        $result = $this->{{modelVariable}}Service->update{{model}}($request->validated());
+        if (isset($result['action_status']) && $result['action_status'] === 'fail') {
+            return $this->errorResponse(
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+                $result['error'] ?? buildSentenceCaseMessage('update_fail', '{{model}}')
+            );
+        }
+        return $this->successResponse(
+            $result,
+            buildSentenceCaseMessage('update_success', '{{model}}'),
+            Response::HTTP_OK
+        );
+    }
+
+    public function delete(Delete{{model}}Request $request)
+    {
+        $result = $this->{{modelVariable}}Service->delete{{model}}($request->validated()['id']);
+        if (isset($result['action_status']) && $result['action_status'] === 'fail') {
+            return $this->errorResponse(
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+                $result['error'] ?? buildSentenceCaseMessage('no_record', '{{model}}')
+            );
+        }
+        return $this->successResponse(
+            [],
+            buildSentenceCaseMessage('delete_success', '{{model}}'),
+            Response::HTTP_OK
+        );
+    }
+}

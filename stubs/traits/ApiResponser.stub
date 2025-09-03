@@ -1,0 +1,99 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Core\Traits;
+
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
+
+/**
+ * Trait ApiResponser
+ *
+ * Provides utility methods for generating standardized API responses.
+ */
+trait ApiResponser
+{
+    /**
+     * Retrieve the user's IP address.
+     *
+     * Checks various headers and falls back to the default request IP.
+     *
+     * @return string The user's IP address.
+     */
+    public function getUserIp(): string
+    {
+        $ip = getenv('HTTP_X_FORWARDED_FOR') ?? request()->ip();
+
+        return explode(',', $ip ?? '127.0.0.1')[0];
+    }
+
+    /**
+     * Build a validation error response.
+     *
+     * @param  \Illuminate\Contracts\Validation\Validator $errorObj The validation error object.
+     * @return JsonResponse                               The JSON response containing validation error details.
+     */
+    protected function buildValidationMessage($errorObj): JsonResponse
+    {
+        $errors = $errorObj->errors()->all();
+        $firstError = array_shift($errors);
+
+        return $this->errorResponse(
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            $firstError,
+            $errorObj->errors()
+        );
+    }
+
+    /**
+     * Return a formatted error response.
+     *
+     * @param  int          $httpStatus The HTTP status code for the response.
+     * @param  string       $message    A descriptive error message.
+     * @param  string|array $error      The error details or messages.
+     * @param  array        $data       Additional data to include in the response.
+     * @return JsonResponse The JSON response with error details.
+     */
+    protected function errorResponse(
+        int $httpStatus = Response::HTTP_INTERNAL_SERVER_ERROR,
+        string $message = '',
+        $error = '',
+        array $data = []
+    ): JsonResponse {
+        $response = [
+            'Message' => $message,
+            'Status' => 'Fail',
+            'Error' => $error,
+            'HttpStatus' => $httpStatus,
+            'Data' => $data,
+        ];
+
+        // If the status is not 500 or 403, set the header to 200
+        $effectiveStatus = ($httpStatus === Response::HTTP_INTERNAL_SERVER_ERROR || $httpStatus === Response::HTTP_FORBIDDEN) ? $httpStatus : Response::HTTP_OK;
+
+        return response()->json($response, $effectiveStatus);
+    }
+
+    /**
+     * Return a formatted success response.
+     * @param array|object|boolean|string $data The data to include in the response.
+     * @param string $message    A descriptive success message.
+     * @param int $httpStatus    The HTTP status code for the response.
+     * @return JsonResponse
+     */
+    protected function successResponse(
+        $data = [],
+        string $message = '',
+        int $httpStatus = Response::HTTP_OK
+    ): JsonResponse {
+        $response = [
+            'Message' => $message,
+            'Status' => 'Success',
+            'HttpStatus' => $httpStatus,
+            'Data' => $data,
+        ];
+
+        return response()->json($response, $httpStatus);
+    }
+}

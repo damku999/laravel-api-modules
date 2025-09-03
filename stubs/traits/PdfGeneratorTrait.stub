@@ -1,0 +1,128 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Core\Traits;
+
+use Dompdf\Dompdf;
+use Dompdf\Options;
+use PDF;
+
+/**
+ * Trait PdfGeneratorTrait
+ *
+ * Provides utility methods for generating and saving PDF files using Blade views.
+ * Requires `barryvdh/laravel-dompdf` (https://github.com/barryvdh/laravel-dompdf).
+ */
+trait PdfGeneratorTrait
+{
+    /**
+     * Generate and save PDF using given parameters.
+     *
+     * @param  string $view_file   The name of the view file.
+     * @param  array  $data        Data to be passed to the view.
+     * @param  string $filename    Filename without extension.
+     * @param  string $filepath    Optional file path.
+     * @param  string $orientation Paper orientation ('portrait' or 'landscape').
+     * @param  string $paper_type  Paper type (e.g., 'a4').
+     * @return string The generated PDF file path.
+     */
+    protected function generateAndSavePdf($view_file, $data, $filename, $filepath, $orientation = 'portrait', $paper_type = 'a4')
+    {
+        view()->share('data', $data);
+        $pdf = PDF::loadView($view_file)->setPaper($paper_type, $orientation)->setWarnings(false);
+
+        $full_file_path = $this->generateFilePath($filename, $filepath);
+        $pdf->save($full_file_path);
+
+        return $full_file_path;
+    }
+
+    /**
+     * Generate and save a portrait-oriented PDF.
+     *
+     * @param  string       $view_file The name of the view file.
+     * @param  array|object $data      Data to be passed to the view.
+     * @param  string       $filename  Filename without extension.
+     * @param  string       $filepath  Optional file path.
+     * @return string       The generated PDF file path.
+     */
+    public function generateAndSavePortraitPdf($view_file, $data, $filename, $filepath = '')
+    {
+        return $this->generateAndSavePdf($view_file, $data, $filename, $filepath);
+    }
+
+    /**
+     * Generate and save a landscape-oriented PDF.
+     *
+     * @param  string $view_file The name of the view file.
+     * @param  array  $data      Data to be passed to the view.
+     * @param  string $filename  Filename without extension.
+     * @param  string $filepath  Optional file path.
+     * @return string The generated PDF file path.
+     */
+    public function generateAndSaveLandscapePdf($view_file, $data, $filename, $filepath = '')
+    {
+        return $this->generateAndSavePdf($view_file, $data, $filename, $filepath, 'landscape');
+    }
+
+    /**
+     * Generate and save a PDF document with page numbers.
+     *
+     * @param  string      $view_file   The name of the Blade view.
+     * @param  array       $data        Data to pass to the view.
+     * @param  string      $filename    The desired filename.
+     * @param  string      $filepath    The path where the PDF will be saved.
+     * @param  string      $orientation The orientation of the paper (landscape or portrait).
+     * @return string|bool The full file path of the saved PDF or false if saving failed.
+     */
+    protected function generateAndSavePdfWithPageNumber($view_file, $data, $filename, $filepath, $orientation = 'landscape')
+    {
+        $view = view($view_file, ['data' => $data]);
+        $dom_pdf_object = new Dompdf();
+        $dom_pdf_object->setPaper('A4', $orientation);
+
+        $options = new Options();
+        $options->setIsRemoteEnabled(true);
+        $options->setIsJavascriptEnabled(true);
+        $options->setIsPhpEnabled(true);
+        $options->setIsFontSubsettingEnabled(true);
+        $dom_pdf_object->setOptions($options);
+
+        $dom_pdf_object->loadHtml($view);
+        $dom_pdf_object->render();
+        $canvas = $dom_pdf_object->getCanvas();
+        $canvas->page_text(770, 570, 'Page: {PAGE_NUM} of {PAGE_COUNT}', '', 9, [0, 0, 0]); // footer
+        $output = $dom_pdf_object->output();
+
+        $full_file_path = $this->generateFilePath($filename, $filepath);
+        file_put_contents($full_file_path, $output);
+
+        return $full_file_path;
+    }
+
+    /**
+     * Generate the full file path for the PDF.
+     *
+     * @param  string $filename The desired filename.
+     * @param  string $filepath The path where the PDF will be saved.
+     * @return string The full file path.
+     */
+    private function generateFilePath($filename, $filepath)
+    {
+        $info = pathinfo($filename);
+        if (isset($info['extension'])) {
+            $file = $filename;
+        } else {
+            $file = $filename . '.pdf';
+        }
+
+        $path = ($filepath !== '' && !empty($filepath)) ? $filepath : config('constants.DEFAULT_FILE_STORE_PATH', storage_path('pdf_temp'));
+
+        if (!is_dir($path)) {
+            mkdir($path, 0777, true);
+        }
+
+        return $path . DIRECTORY_SEPARATOR . $file;
+    }
+}

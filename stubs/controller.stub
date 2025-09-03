@@ -1,0 +1,26 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DummyNamespace\Controllers;
+
+use Illuminate\Http\Response;
+use App\Http\Controllers\Controller;
+use DummyNamespace\Services\{{model}}Service;
+use DummyNamespace\Request\List{{model}}Request;
+
+class {{model}}Controller extends Controller
+{
+    protected ${{modelVariable}}Service;
+
+    public function __construct({{model}}Service ${{modelVariable}}Service)
+    {
+        $this->{{modelVariable}}Service = ${{modelVariable}}Service;
+    }
+
+    public function list(List{{model}}Request $request)
+    {
+        $response = $this->{{modelVariable}}Service->list{{modelPlural}}($request->validated());
+        return $this->successResponse($response, buildSentenceCaseMessage('action_success', 'Get {{model}}'), Response::HTTP_OK);
+    }
+}

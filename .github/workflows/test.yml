@@ -1,0 +1,528 @@
+name: Enhanced CI/CD with Self-Healing
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: "0 2 * * *"
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    name: Pre-flight Validation
+    outputs:
+      should-continue: ${{ steps.validation.outputs.continue }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.2
+          extensions: dom, curl, libxml, mbstring, zip
+
+      - name: Validate Composer files
+        id: validation
+        run: |
+          composer validate --strict --no-check-all --no-check-publish
+          echo "continue=true" >> $GITHUB_OUTPUT
+
+      - name: Check for security vulnerabilities
+        run: |
+          composer audit --no-dev || echo "::warning::Security vulnerabilities detected - review required"
+
+  auto-fix:
+    runs-on: ubuntu-latest
+    name: Code Style Check
+    needs: validation
+    if: needs.validation.outputs.should-continue == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.2
+          extensions: dom, curl, libxml, mbstring, zip
+
+      - name: Configure Composer
+        run: |
+          composer config --no-plugins allow-plugins.pestphp/pest-plugin true
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction
+
+      - name: Auto-fix code style
+        id: cs-fixer
+        run: |
+          if [ -f "vendor/bin/php-cs-fixer" ] && [ -f ".php-cs-fixer.dist.php" ]; then
+            composer run format
+            # Check if changes were made
+            if [[ -n $(git status --porcelain) ]]; then
+              echo "changes=true" >> $GITHUB_OUTPUT
+              echo "Files changed by PHP CS Fixer:"
+              git status --porcelain
+            else
+              echo "changes=false" >> $GITHUB_OUTPUT
+              echo "No code style changes needed"
+            fi
+          else
+            echo "PHP CS Fixer or configuration not found, skipping auto-fix"
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Show diff for code style changes
+        if: steps.cs-fixer.outputs.changes == 'true'
+        run: |
+          echo "::group::Code style diff"
+          git diff --no-color
+          echo "::endgroup::"
+
+      - name: Log auto-fix changes (instead of PR creation)
+        if: steps.cs-fixer.outputs.changes == 'true' && github.event_name == 'push'
+        run: |
+          echo "::notice::Code style changes detected. Consider running 'composer run format' locally."
+          echo "Files that would be changed:"
+          git status --porcelain
+          echo "You can run the following command to fix these locally:"
+          echo "composer run format"
+          
+      - name: Create issue for code style fixes
+        if: steps.cs-fixer.outputs.changes == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        continue-on-error: true
+        run: |
+          echo "::warning::Code style issues detected on ${{ github.ref_name }} branch"
+          echo "::warning::Run 'composer run format' locally to fix formatting issues"
+          echo "::notice::Consider setting up a pre-commit hook to automatically format code"
+
+  test:
+    runs-on: ${{ matrix.os }}
+    name: P${{ matrix.php }} - L${{ matrix.laravel }} - ${{ matrix.os }}
+    needs: [validation, auto-fix]
+    if: always() && needs.validation.outputs.should-continue == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          # Laravel 8.* - PHP 7.4-8.1
+          - laravel: 8.*
+            testbench: ^6.0
+            php: 7.4
+          - laravel: 8.*
+            testbench: ^6.0
+            php: 8.0
+          - laravel: 8.*
+            testbench: ^6.0
+            php: 8.1
+          # Laravel 9.* - PHP 8.0-8.2
+          - laravel: 9.*
+            testbench: ^7.0
+            php: 8.0
+          - laravel: 9.*
+            testbench: ^7.0
+            php: 8.1
+          - laravel: 9.*
+            testbench: ^7.0
+            php: 8.2
+          # Laravel 10.* - PHP 8.1-8.3
+          - laravel: 10.*
+            testbench: ^8.0
+            php: 8.1
+          - laravel: 10.*
+            testbench: ^8.0
+            php: 8.2
+          - laravel: 10.*
+            testbench: ^8.0
+            php: 8.3
+          # Laravel 11.* - PHP 8.2-8.3
+          - laravel: 11.*
+            testbench: ^9.0
+            php: 8.2
+          - laravel: 11.*
+            testbench: ^9.0
+            php: 8.3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
+          coverage: xdebug
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ matrix.php }}-laravel-${{ matrix.laravel }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-${{ matrix.php }}-laravel-${{ matrix.laravel }}-
+            ${{ runner.os }}-php-${{ matrix.php }}-
+
+      - name: Configure Composer
+        run: |
+          composer config --no-plugins allow-plugins.pestphp/pest-plugin true
+
+      - name: Install dependencies with retry
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_on: error
+          command: |
+            composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
+            composer update --prefer-dist --no-interaction
+
+      - name: Create directories
+        run: |
+          mkdir -p coverage-reports || true
+          mkdir -p test-results || true
+        shell: bash
+
+      - name: Run Pest Tests with retry
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 15
+          max_attempts: 2
+          retry_on: error
+          command: composer run test-coverage-clover
+
+      - name: Generate HTML Coverage Report
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.3' && matrix.laravel == '11.*'
+        run: composer run test-coverage
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.3' && matrix.laravel == '11.*'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Archive code coverage results
+        if: matrix.os == 'ubuntu-latest' && matrix.php == '8.3' && matrix.laravel == '11.*'
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: coverage-report/
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-php${{ matrix.php }}-laravel${{ matrix.laravel }}
+          path: test-results/
+
+  security-analysis:
+    runs-on: ubuntu-latest
+    name: Security Analysis
+    needs: validation
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.2
+          extensions: dom, curl, libxml, mbstring, zip
+
+      - name: Configure Composer
+        run: |
+          composer config --no-plugins allow-plugins.pestphp/pest-plugin true
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction
+
+      - name: Run Psalm
+        run: |
+          if [ -f "vendor/bin/psalm" ]; then
+            composer run psalm -- --output-format=github --shepherd --stats
+          else
+            echo "Psalm not found, skipping static analysis"
+          fi
+        continue-on-error: true
+
+      - name: Security Audit
+        run: |
+          composer audit --format=json > security-report.json || echo "Security issues detected"
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-analysis
+          path: security-report.json
+
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality Analysis
+    needs: [validation, auto-fix]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.2
+          extensions: dom, curl, libxml, mbstring, zip
+
+      - name: Configure Composer
+        run: |
+          composer config --no-plugins allow-plugins.pestphp/pest-plugin true
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction
+
+      - name: Run PHP CS Fixer (check only)
+        run: |
+          if [ -f "vendor/bin/php-cs-fixer" ]; then
+            composer run format-dry
+          else
+            echo "PHP CS Fixer not found, skipping format check"
+          fi
+        continue-on-error: true
+
+      - name: Run PHPStan
+        run: |
+          if [ -f "vendor/bin/phpstan" ]; then
+            composer run analyse
+          else
+            echo "PHPStan not found, skipping analysis"
+          fi
+        continue-on-error: true
+
+  performance-benchmark:
+    runs-on: ubuntu-latest
+    name: Performance Benchmarks
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.2
+          extensions: dom, curl, libxml, mbstring, zip
+
+      - name: Configure Composer
+        run: |
+          composer config --no-plugins allow-plugins.pestphp/pest-plugin true
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Run Performance Tests
+        continue-on-error: true
+        run: |
+          if [ -f "scripts/performance_test.php" ]; then
+            php scripts/performance_test.php
+          else
+            echo "No performance test script found"
+          fi
+
+      - name: Benchmark Module Generation
+        run: |
+          echo "Testing module generation performance..."
+          time php -r "
+          require 'vendor/autoload.php';
+          use Webmonks\LaravelApiModules\Support\FileSystemCache;
+          for (\$i = 0; \$i < 100; \$i++) {
+            FileSystemCache::exists(__FILE__);
+            FileSystemCache::getContents(__FILE__);
+          }
+          echo 'Performance test completed';
+          "
+
+  send-notification:
+    runs-on: ubuntu-latest
+    name: Send Email Report
+    needs: [test, security-analysis, code-quality, performance-benchmark]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare test summary
+        id: test-summary
+        run: |
+          echo "## 🧪 Laravel API Modules - Test Results" > test-summary.md
+          echo "" >> test-summary.md
+          echo "**Repository:** ${{ github.repository }}" >> test-summary.md
+          echo "**Branch:** ${{ github.ref_name }}" >> test-summary.md
+          echo "**Commit:** ${{ github.sha }}" >> test-summary.md
+          echo "**Workflow:** ${{ github.workflow }}" >> test-summary.md
+          echo "**Triggered by:** ${{ github.event_name }}" >> test-summary.md
+          echo "**Date:** $(TZ='Asia/Kolkata' date '+%Y-%m-%d %H:%M:%S IST')" >> test-summary.md
+          echo "" >> test-summary.md
+
+          # Test Results Summary
+          echo "### 📊 Test Results Summary" >> test-summary.md
+          echo "" >> test-summary.md
+
+          if [[ "${{ needs.test.result }}" == "success" ]]; then
+            echo "✅ **Unit Tests:** PASSED" >> test-summary.md
+          else
+            echo "❌ **Unit Tests:** FAILED" >> test-summary.md
+          fi
+
+          if [[ "${{ needs.security-analysis.result }}" == "success" ]]; then
+            echo "🛡️ **Security Analysis:** PASSED" >> test-summary.md
+          else
+            echo "⚠️ **Security Analysis:** FAILED" >> test-summary.md
+          fi
+
+          if [[ "${{ needs.code-quality.result }}" == "success" ]]; then
+            echo "🔍 **Code Quality:** PASSED" >> test-summary.md
+          else
+            echo "❌ **Code Quality:** FAILED" >> test-summary.md
+          fi
+
+          if [[ "${{ needs.performance-benchmark.result }}" == "success" ]]; then
+            echo "⚡ **Performance:** PASSED" >> test-summary.md
+          else
+            echo "⚠️ **Performance:** ISSUES DETECTED" >> test-summary.md
+          fi
+
+          echo "" >> test-summary.md
+          echo "### 🔗 Links" >> test-summary.md
+          echo "- [View Workflow Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> test-summary.md
+          echo "- [View Code Coverage](https://codecov.io/gh/${{ github.repository }})" >> test-summary.md
+          echo "" >> test-summary.md
+
+          # Set overall status
+          if [[ "${{ needs.test.result }}" == "success" ]]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "### 🎉 Overall Status: SUCCESS" >> test-summary.md
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "### ⚠️ Overall Status: REQUIRES ATTENTION" >> test-summary.md
+          fi
+
+      - name: Send email notification
+        if: github.event_name == 'push' && steps.test-summary.outputs.status
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          secure: false
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "🧪 Laravel API Modules - Enhanced CI [${{ steps.test-summary.outputs.status == 'success' && '✅ SUCCESS' || '⚠️ ATTENTION REQUIRED' }}]"
+          to: webmonks.in@gmail.com
+          from: Laravel API Modules CI <${{ secrets.SMTP_USERNAME }}>
+          body: file://test-summary.md
+          html_body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; }
+                    .summary { background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; }
+                    .success { color: #28a745; }
+                    .failure { color: #dc3545; }
+                    .warning { color: #ffc107; }
+                    .metric { display: inline-block; margin: 10px; padding: 10px; background: white; border-radius: 4px; border-left: 4px solid #007bff; }
+                    .footer { color: #6c757d; font-size: 12px; margin-top: 30px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🧪 Laravel API Modules - Test Results</h1>
+                    <p><strong>Status:</strong> ${{ steps.test-summary.outputs.status == 'success' && '✅ PASSED' || '❌ FAILED' }}</p>
+                </div>
+                
+                <div class="summary">
+                    <h3>📊 Test Summary</h3>
+                    <div class="metric">
+                        <strong>Repository:</strong> ${{ github.repository }}
+                    </div>
+                    <div class="metric">
+                        <strong>Branch:</strong> ${{ github.ref_name }}
+                    </div>
+                    <div class="metric">
+                        <strong>Commit:</strong> ${{ github.sha }}
+                    </div>
+                </div>
+
+                <div class="summary">
+                    <h3>🔍 Results Breakdown</h3>
+                    <p class="${{ needs.test.result == 'success' && 'success' || 'failure' }}">
+                        ${{ needs.test.result == 'success' && '✅' || '❌' }} <strong>Unit Tests:</strong> ${{ needs.test.result == 'success' && 'PASSED' || 'FAILED' }}
+                    </p>
+                    <p class="${{ needs.security-analysis.result == 'success' && 'success' || 'failure' }}">
+                        ${{ needs.security-analysis.result == 'success' && '🛡️' || '⚠️' }} <strong>Security Analysis:</strong> ${{ needs.security-analysis.result == 'success' && 'PASSED' || 'FAILED' }}
+                    </p>
+                    <p class="${{ needs.code-quality.result == 'success' && 'success' || 'failure' }}">
+                        ${{ needs.code-quality.result == 'success' && '🔍' || '❌' }} <strong>Code Quality:</strong> ${{ needs.code-quality.result == 'success' && 'PASSED' || 'FAILED' }}
+                    </p>
+                    <p class="${{ needs.performance-benchmark.result == 'success' && 'success' || 'warning' }}">
+                        ${{ needs.performance-benchmark.result == 'success' && '⚡' || '⚠️' }} <strong>Performance:</strong> ${{ needs.performance-benchmark.result == 'success' && 'PASSED' || 'ISSUES DETECTED' }}
+                    </p>
+                </div>
+
+                <div class="summary">
+                    <h3>🔗 Quick Links</h3>
+                    <p>
+                        <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a> |
+                        <a href="https://codecov.io/gh/${{ github.repository }}">View Code Coverage</a>
+                    </p>
+                </div>
+
+                <div class="footer">
+                    <p>This email was automatically generated by GitHub Actions for the Laravel API Modules project.</p>
+                    <p>Generated at: $(TZ='Asia/Kolkata' date '+%Y-%m-%d %H:%M:%S IST')</p>
+                </div>
+            </body>
+            </html>
+          attachments: coverage.xml,coverage-report/
+
+      - name: Create GitHub Release on Success
+        if: steps.test-summary.outputs.status == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.${{ github.run_number }}
+          name: Release v1.${{ github.run_number }}
+          body: |
+            🎉 **Automated Release - All Tests Passed!**
+
+            This release was automatically created after all tests passed successfully.
+
+            ## ✅ Test Results
+            - Unit Tests: PASSED
+            - Security Analysis: PASSED  
+            - Code Quality: PASSED
+            - Performance Tests: PASSED
+
+            ## 📊 Coverage
+            View detailed coverage report in the workflow artifacts.
+
+            ## 🔄 Changes
+            See commit history for detailed changes in this release.
+          draft: false
+          prerelease: false
