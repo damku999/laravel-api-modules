@@ -324,10 +324,10 @@ class RemoveModuleCommand extends Command
         $backupDir = base_path("storage/laravel-api-modules-backups/{$moduleName}_{$timestamp}");
 
         try {
-            if (!is_dir(dirname($backupDir))) {
-                mkdir(dirname($backupDir), 0755, true);
+            // Ensure the backup directory exists - create it in one step with recursive flag
+            if (!mkdir($backupDir, 0755, true) && !is_dir($backupDir)) {
+                throw new \RuntimeException("Failed to create backup directory: {$backupDir}");
             }
-            mkdir($backupDir, 0755, true);
 
             // Backup directories
             foreach ($filesToRemove['directories'] as $dir) {
@@ -350,6 +350,11 @@ class RemoveModuleCommand extends Command
 
             return $backupDir;
         } catch (\Exception $e) {
+            // Clean up partially created backup directory if it exists
+            if (is_dir($backupDir)) {
+                $this->removeDirectory($backupDir);
+            }
+            
             $this->warn("Failed to create backup: " . $e->getMessage());
 
             return null;
