@@ -24,7 +24,7 @@ class DummyClass extends {{model_extends_base}}
 {
     use HasCommonCasts;
     use HasFactory;
-    protected $table = '{{DummyTable}}';
+    protected $table = 'DummyTable';
 
     protected $casts = [
         'name' => 'string',
