@@ -496,6 +496,6 @@ This package is open-sourced software licensed under the [MIT License](LICENSE).
 
 **Made with ❤️ for the Laravel community**
 
-[⭐ Give us a star](https://github.com/webmonks/laravel-api-modules) • [📦 View on Packagist](https://packagist.org/packages/webmonks/laravel-api-modules) • [🐛 Report Issues](https://github.com/webmonks/laravel-api-modules/issues)
+[⭐ Give us a star](https://github.com/damku999/laravel-api-modules) • [📦 View on Packagist](https://packagist.org/packages/webmonks/laravel-api-modules) • [🐛 Report Issues](https://github.com/damku999/laravel-api-modules/issues)
 
 </div>
