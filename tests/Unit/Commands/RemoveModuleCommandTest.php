@@ -936,6 +936,13 @@ it('tests backup directory creation with invalid parent path', function () {
     // Mock OutputStyle for error messages
     $output = \Mockery::mock(\Illuminate\Console\OutputStyle::class);
     $output->shouldReceive('writeln')->andReturn(null);
+    
+    // Mock formatter chain for warn() method
+    $formatter = \Mockery::mock(\Symfony\Component\Console\Formatter\OutputFormatterInterface::class);
+    $formatter->shouldReceive('hasStyle')->with('warning')->andReturn(false);
+    $formatter->shouldReceive('setStyle')->andReturn(null);
+    $output->shouldReceive('getFormatter')->andReturn($formatter);
+    
     $command->setOutput($output);
 
     $reflection = new ReflectionClass($command);
