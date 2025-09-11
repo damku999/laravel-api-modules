@@ -9,6 +9,11 @@ on:
     # Run tests daily at 2 AM UTC
     - cron: "0 2 * * *"
 
+# SECURITY FIX: Restrict default permissions to minimum required (CKV2_GHA_1)
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   validation:
     runs-on: ubuntu-latest
@@ -356,6 +361,10 @@ jobs:
     name: Send Email Report
     needs: [test, security-analysis, code-quality, performance-benchmark]
     if: always()
+    # SECURITY: Specific permissions for this job
+    permissions:
+      contents: write  # Required for creating GitHub releases
+      actions: read    # Required for downloading artifacts
 
     steps:
       - name: Checkout code
